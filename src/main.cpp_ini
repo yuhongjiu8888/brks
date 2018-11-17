@@ -1,0 +1,156 @@
+
+#include "DispatchMsgService.h"
+#include "interface.h"
+#include "Logger.h"
+#include "sqlconnection.h"
+#include "BusProcessor.h"
+
+#include <functional>
+#include <string.h>
+#include <iniparser/iniparser.h>
+
+typedef struct st_env_config
+{
+   //数据库的配置
+   std::string db_ip;
+   unsigned short db_port;
+   std::string db_user;
+   std::string db_pwd;
+   std::string db_name;
+
+   //服务的配置
+   unsigned short svr_port;
+
+   st_env_config()
+   {
+   };
+
+   st_env_config(const std::string& db_ip, unsigned int db_port, const std::string& db_user, \
+                 const std::string& db_pwd, const std::string& db_name, unsigned short svr_port)
+   {
+       this->db_ip    = db_ip;
+       this->db_port  = db_port;
+       this->db_user  = db_user;
+       this->db_pwd   = db_pwd;
+       this->db_name  = db_name;
+       this->svr_port = svr_port;
+   };
+
+   st_env_config& operator =(const st_env_config& config)
+   {
+       if (this != &config)
+       {
+           this->db_ip    = config.db_ip;
+           this->db_port  = config.db_port;
+           this->db_user  = config.db_user;
+           this->db_pwd   = config.db_pwd;
+           this->db_name  = config.db_name;
+           this->svr_port = config.svr_port;
+
+        }
+        return *this;
+    }
+}_st_env_config;
+
+
+class Iniconfig
+{
+public :
+    Iniconfig(): _isloaded(false){}
+    virtual ~Iniconfig(){}
+    bool loadfile(const std::string& path);
+    const st_env_config& getconfig(){return _config;}
+
+private:
+    st_env_config _config;
+    bool _isloaded;
+};
+
+
+
+bool Iniconfig::loadfile(const std::string& path)
+{
+    dictionary*   ini = NULL;
+
+    ini = iniparser_load(path.c_str());
+    if (ini==NULL)
+    {
+        LOG_ERROR("cannot parse file: %s\n", path.c_str());
+        return false;
+    }
+
+    char* ip    = iniparser_getstring(ini, "database:ip", "127.0.0.1");
+    int   port  = iniparser_getint(ini, "database:port", 3306);
+    char* user  = iniparser_getstring(ini, "database:user", "root");
+    char* pwd   = iniparser_getstring(ini, "database:pwd", "123456");
+    char* db    = iniparser_getstring(ini, "database:db", "dongnaobike");
+    int   sport = iniparser_getint(ini, "server:port", 9090);
+
+    _config = st_env_config(std::string(ip), port, std::string(user), \
+        std::string(pwd), std::string(db), sport);
+
+    iniparser_freedict(ini);
+
+    _isloaded = true;
+
+    return true;
+}
+
+
+
+int main(int argc, char** argv)
+{
+    if (argc != 3)
+    {
+        printf("please input brks <log file config> <dbconfig file>!\n");
+        return -1;
+    }
+    
+    if(!Logger::instance()->init(std::string(argv[1])))
+    {
+        printf("init log module failed.\n");
+        return -1;
+    }
+    else
+    {
+        printf("init log module success!\n");
+    }
+
+	Iniconfig config;
+
+    if (!config.loadfile(std::string(argv[2])))
+    {
+        LOG_ERROR("load %s failed.", argv[2]);
+        return -3;
+    }
+    st_env_config conf_args = config.getconfig();
+
+
+
+	
+	LOG_INFO("host:[%s],port:[%d],user:[%s],passwd:[%s],dbname:[%s],serverPort:[%d]",conf_args.db_ip.c_str(),
+	conf_args.db_port,conf_args.db_user.c_str(),conf_args.db_pwd.c_str(),conf_args.db_name.c_str(),conf_args.svr_port);
+
+
+    std::shared_ptr<DispatchMsgService> dms(new DispatchMsgService);
+    dms->open();
+    
+    std::shared_ptr<MysqlConnection> mysqlconn(new MysqlConnection);
+    mysqlconn->Init(conf_args.db_ip.c_str(),conf_args.db_port,conf_args.db_user.c_str(),
+				conf_args.db_pwd.c_str(),conf_args.db_name.c_str());
+    
+    BusinessProcessor processor(dms, mysqlconn);
+    processor.init();
+
+    std::function< iEvent* (const iEvent*)> fun = std::bind(&DispatchMsgService::process, dms.get(), std::placeholders::_1);
+    
+    Interface intf(fun);
+    intf.start(conf_args.svr_port);
+
+    LOG_INFO("brks start successful!");
+
+    for(;;);
+
+    
+    return 0;
+}

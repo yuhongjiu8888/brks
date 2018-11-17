@@ -1,0 +1,165 @@
+
+#include "DispatchMsgService.h"
+#include "interface.h"
+#include "Logger.h"
+#include "sqlconnection.h"
+#include "BusProcessor.h"
+
+#include <functional>
+#include <string.h>
+
+
+extern "C"  
+{  
+    #include "lua.h"  
+    #include "lauxlib.h"  
+    #include "lualib.h"  
+}
+
+
+//数据库配置信息
+typedef struct
+{
+	//数据库IP
+	char db_ip[32];
+	//数据库通讯端口
+	unsigned short db_port;
+	//数据库登录用户名
+	 char db_user[32];
+	//数据库登录密码
+	char db_pwd[32];
+	//数据库名
+	char db_name[32];
+}dbConfigInfo;
+
+
+dbConfigInfo dbConfInfo;
+
+/*服务器监听端口*/
+unsigned short serverPort;
+
+
+
+int dofile(lua_State *L, const char* path)
+{
+	if (LUA_OK != luaL_dofile(L, path))
+	{
+		return 0;
+	}
+
+	printf("sizeof: %d\n", lua_gettop(L));    
+    printf("typeof: %d\n", lua_type(L, -1));
+    printf("typeof: %d\n", lua_type(L, -2));
+    
+    
+    return 1;
+
+}
+
+
+
+
+int main(int argc, char** argv)
+{
+    if (argc != 3)
+    {
+        printf("please input brks <log file config> <dbconfig file>!\n");
+        return -1;
+    }
+    
+    if(!Logger::instance()->init(std::string(argv[1])))
+    {
+        printf("init log module failed.\n");
+        return -1;
+    }
+    else
+    {
+        printf("init log module success!\n");
+    }
+
+
+	
+	memset(&dbConfInfo,0x00,sizeof(dbConfInfo));
+
+
+	/*创建lua状态*/
+	lua_State *L = luaL_newstate();
+	if (L == NULL)  
+    {
+		printf("create lua_State error!");  
+        return -1;  
+    }
+
+	luaL_openlibs(L);
+
+	if (0 == dofile(L, argv[2]))
+    {
+        printf("file check failed.\n");
+        return -1;
+    }
+
+	lua_getglobal(L,"serverPort");
+	serverPort = lua_tonumber(L,-1);//lua_tostring
+	printf("serverPort : %d \n", serverPort);
+	lua_pop(L,1);	//出栈
+
+
+
+	/*读取数据*/
+	lua_getglobal(L,"mysqldb");
+	lua_getfield(L,-1,"host");
+	strcpy(dbConfInfo.db_ip,lua_tostring(L,-1));
+	printf("db_ip:%s\n", dbConfInfo.db_ip);
+	lua_pop(L,1);
+
+
+	lua_getfield(L,-1,"port");
+    dbConfInfo.db_port = lua_tonumber(L,-1);
+    printf("db_port:%d\n", dbConfInfo.db_port);
+    lua_pop(L,1);
+
+
+	lua_getfield(L,-1,"dbuser");
+    strcpy(dbConfInfo.db_user,lua_tostring(L,-1));
+    printf("db_user:%s\n", dbConfInfo.db_user);
+    lua_pop(L,1);
+
+
+	lua_getfield(L,-1,"dbpasswd");
+    strcpy(dbConfInfo.db_pwd,lua_tostring(L,-1));
+	printf("db_passwd:%s\n",dbConfInfo.db_pwd);
+    lua_pop(L,1);
+
+	lua_getfield(L,-1,"dbname");
+    strcpy(dbConfInfo.db_name,lua_tostring(L,-1));
+    printf("db_name:%s\n", dbConfInfo.db_name);
+
+	/*关闭state*/
+    lua_close(L);
+
+
+	LOG_INFO("host:[%s],port:[%d],user:[%s],passwd:[%s],dbname:[%s],serverPort:[%d]",dbConfInfo.db_ip,
+	dbConfInfo.db_port,dbConfInfo.db_user,dbConfInfo.db_pwd,dbConfInfo.db_name,serverPort);
+
+
+    std::shared_ptr<DispatchMsgService> dms(new DispatchMsgService);
+    dms->open();
+    
+    std::shared_ptr<MysqlConnection> mysqlconn(new MysqlConnection);
+    mysqlconn->Init(dbConfInfo.db_ip,dbConfInfo.db_port,dbConfInfo.db_user,dbConfInfo.db_pwd,dbConfInfo.db_name);
+    
+    BusinessProcessor processor(dms, mysqlconn);
+    processor.init();
+
+    std::function< iEvent* (const iEvent*)> fun = std::bind(&DispatchMsgService::process, dms.get(), std::placeholders::_1);
+    
+    Interface intf(fun);
+    intf.start(serverPort);
+
+    LOG_INFO("brks start successful!");
+
+    for(;;);
+
+    
+    return 0;
+}
