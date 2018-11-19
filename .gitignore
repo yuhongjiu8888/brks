@@ -1,4 +1,4 @@
 *.o
-*.a
+/src/*.a
 *.log
 /CMakeFiles/
