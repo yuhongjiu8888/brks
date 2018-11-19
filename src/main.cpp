@@ -278,7 +278,6 @@ int main(int argc, char** argv)
     {
         LOG_INFO("parent id is %d", getpid());
         LOG_INFO("brks start successful!");
-<<<<<<< HEAD
 
         // if child process exit with -1 then exit parent process.
         // if child process exit with not -1 then restart child process
@@ -289,18 +288,6 @@ int main(int argc, char** argv)
             int exitStatus = WEXITSTATUS(status);
             LOG_INFO("parent process wait return with: pid=%d, status=%d, exitStatus=%d.", pid, status, exitStatus);
 
-=======
-
-        // if child process exit with -1 then exit parent process.
-        // if child process exit with not -1 then restart child process
-        int status = 0;
-        while (status == 0)
-        {
-            pid_t pid = wait(&status);  // parent process block here.
-            int exitStatus = WEXITSTATUS(status);
-            LOG_INFO("parent process wait return with: pid=%d, status=%d, exitStatus=%d.", pid, status, exitStatus);
-
->>>>>>> 229fecd4a6605e7173989861dccbb8c6a8359b18
             if ((WIFEXITED(status) != 0) && (pid > 0))
             {
                 if (exitStatus == -1)
@@ -339,7 +326,3 @@ int main(int argc, char** argv)
     return 0;
 }
 
-<<<<<<< HEAD
-=======
-
->>>>>>> 229fecd4a6605e7173989861dccbb8c6a8359b18
