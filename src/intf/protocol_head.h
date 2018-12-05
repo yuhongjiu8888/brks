@@ -25,6 +25,7 @@ enum message_arrow_t
     UNKONW_ARROW        = 63  // message arrow of 6 bit is 111111.
 };
 
+#pragma pack(4)
 struct protocol_head_t
 {
     u16        tag_;        // 0xFBFC
@@ -35,6 +36,7 @@ struct protocol_head_t
     u64        msg_sn;     // message serise number
     u32        reserve_;    // reserve bytes
 };
+#pragma pack()
 
 #define HEAD_TAG_POS        0
 #define HEAD_VERSION_POS    2
@@ -45,7 +47,7 @@ struct protocol_head_t
 #define HEAD_RESERVE_POS    16
 
 
-class message_head_t
+class protocol_head_codec_t
 {
 public:
     virtual bool decode(u8* buffer, u32 size, protocol_head_t* head);
